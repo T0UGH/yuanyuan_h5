@@ -13,7 +13,12 @@ const nextImage = () => {
   if (!currentSpot.value?.images) return;
   currentImageIndex.value = (currentImageIndex.value + 1) % currentSpot.value.images.length;
 };
-import { getCurrentTimeSpot, getItineraryByTime } from '../data/itinerary.js';
+// 修复：添加itineraryData导入
+import { 
+  getCurrentTimeSpot, 
+  getItineraryByTime,
+  itineraryData  // 添加这一行
+} from '../data/itinerary.js';
 
 const props = defineProps({
   isGirl: Boolean
@@ -51,6 +56,30 @@ const toggleCustomInput = () => {
 };
 
 const handleCustomDateChange = () => {
+  // 改为从下拉框直接获取时间
+  if (!customDate.value) return;
+  
+  // 解析选择的时间段（示例："07:00-08:30"）
+  const [startTime] = customTime.value.split('-');
+  const [hours, minutes] = startTime.split(':');
+  
+  // 创建日期对象（时区已处理）
+  const date = new Date(`${customDate.value}T${hours}:${minutes}:00+08:00`);
+  selectedDate.value = date;
+};
+
+// 获取所有可用时间段（从行程数据中提取）
+const timeOptions = computed(() => {
+  const allTimes = [];
+  Object.values(itineraryData).forEach(dateEntries => {
+    dateEntries.forEach(entry => {
+      if (!allTimes.includes(entry.time)) {
+        allTimes.push(entry.time);
+      }
+    });
+  });
+  return allTimes.sort();
+});
   console.log('日期时间变更，新选择的日期:', customDate.value, '时间:', customTime.value);
   // 修复：当只选择日期时保留当前时间
   const timeParts = customTime.value ? customTime.value.split(':') : new Date().toTimeString().slice(0,5).split(':');
@@ -108,6 +137,20 @@ onBeforeUnmount(() => {
           max="2024-03-23"
           @change="handleCustomDateChange"
         >
+        <select 
+          v-model="customTime"
+          @change="handleCustomDateChange"
+          class="time-select"
+        >
+          <option value="">选择时间段</option>
+          <option 
+            v-for="(time, index) in timeOptions" 
+            :key="index" 
+            :value="time"
+          >
+            {{ time }}
+          </option>
+        </select>
         <input 
           type="time" 
           v-model="customTime"
