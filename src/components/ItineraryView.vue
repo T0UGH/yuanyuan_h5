@@ -32,9 +32,65 @@ const selectedDate = ref(new Date());
 const customDate = ref('');
 const customTime = ref('');
 const showCustomInput = ref(false);
+// 新增响应式变量
+const selectedDateTime = ref('');
 
 const toggleUserType = () => {
   emit('update:isGirl', !props.isGirl);
+};
+
+// 删除旧的 customDate 和 customTime 声明
+// const customDate = ref('');
+// const customTime = ref('');
+
+// 修改后的时间选项计算属性
+// 重命名为 dateTimeOptions 避免重复声明
+const dateTimeOptions = computed(() => {
+  const options = [];
+  Object.entries(itineraryData).forEach(([date, entries]) => {
+    entries.forEach(entry => {
+      // 过滤无效时间段（如zzz）
+      if (!entry.time.includes('-')) return;
+      
+      const value = `${date}_${entry.time}`;
+      const label = `${date.replace(/-/g, '/')} ${entry.time}`;
+      
+      if (!options.some(opt => opt.value === value)) {
+        options.push({ value, label });
+      }
+    });
+  });
+  
+  // 按日期时间排序
+  return options.sort((a, b) => 
+    new Date(a.value.split('_')[0]) - new Date(b.value.split('_')[0]) ||
+    a.value.localeCompare(b.value)
+  );
+});
+
+// 修改后的日期变更处理函数
+const handleDateTimeChange = () => {
+  if (!selectedDateTime.value) return;
+  
+  // 解析选择的日期和时间段
+  const [dateStr, timeStr] = selectedDateTime.value.split('_');
+  const [startTime] = timeStr?.split('-') || [];
+  
+  if (!dateStr || !startTime) {
+    console.error('无效的日期时间格式');
+    return;
+  }
+
+  // 创建日期对象（时区已处理）
+  const [hours, minutes] = startTime.split(':');
+  const date = new Date(`${dateStr}T${hours}:${minutes}:00+08:00`);
+  
+  if (date.toString() === 'Invalid Date') {
+    console.error('无效的日期时间');
+    return;
+  }
+  
+  selectedDate.value = date;
 };
 
 const currentSpot = computed(() => {
@@ -64,31 +120,46 @@ const handleCustomDateChange = () => {
   const [hours, minutes] = startTime.split(':');
   
   // 创建日期对象（时区已处理）
-  const date = new Date(`${customDate.value}T${hours}:${minutes}:00+08:00`);
+  const dateTimeStr = `${customDate.value}T${hours}:${minutes}:00+08:00`;
+  console.log('日期时间变更，新选择的日期:', customDate.value, '时间:', customTime.value);
+  
+  const date = new Date(dateTimeStr);
+  if (date.toString() === 'Invalid Date') {
+    console.error('无效的日期格式');
+    return;
+  }
+  
   selectedDate.value = date;
 };
 
 // 获取所有可用时间段（从行程数据中提取）
+
+// 修改后的时间选项计算属性（保持命名一致）
 const timeOptions = computed(() => {
-  const allTimes = [];
-  Object.values(itineraryData).forEach(dateEntries => {
-    dateEntries.forEach(entry => {
-      if (!allTimes.includes(entry.time)) {
-        allTimes.push(entry.time);
+  const options = [];
+  Object.entries(itineraryData).forEach(([date, entries]) => {
+    entries.forEach(entry => {
+      // 确保 entry.time 是有效时间段（如 "07:00-08:30"）
+      if (!entry.time || !entry.time.includes('-')) return;
+      
+      const value = `${date}_${entry.time}`;
+      const label = `${date.replace(/-/g, '/')} ${entry.time}`;
+      
+      if (!options.some(opt => opt.value === value)) {
+        options.push({ value, label });
       }
     });
   });
-  return allTimes.sort();
-});
-  console.log('日期时间变更，新选择的日期:', customDate.value, '时间:', customTime.value);
-  // 修复：当只选择日期时保留当前时间
-  const timeParts = customTime.value ? customTime.value.split(':') : new Date().toTimeString().slice(0,5).split(':');
-  const dateTimeStr = customDate.value + 'T' + timeParts.join(':');
   
-  const date = new Date(dateTimeStr);
-  if (date.toString() === 'Invalid Date') return;
-  selectedDate.value = date;
-};
+  // 按日期排序
+  return options.sort((a, b) => 
+    new Date(a.value.split('_')[0]) - new Date(b.value.split('_')[0]) ||
+    a.value.localeCompare(b.value)
+  );
+});
+
+// 在这里添加调试输出
+console.log('生成的时间选项:', timeOptions.value);
 
 const resetToCurrentTime = () => {
   console.log('重置为当前时间');
@@ -130,32 +201,20 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="showCustomInput" class="date-input">
-        <input 
-          type="date" 
-          v-model="customDate"
-          min="2024-03-21"
-          max="2024-03-23"
-          @change="handleCustomDateChange"
-        >
         <select 
-          v-model="customTime"
-          @change="handleCustomDateChange"
+          v-model="selectedDateTime"
+          @change="handleDateTimeChange"
           class="time-select"
         >
-          <option value="">选择时间段</option>
+          <option value="">选择日期和时间段</option>
           <option 
-            v-for="(time, index) in timeOptions" 
+            v-for="(option, index) in timeOptions" 
             :key="index" 
-            :value="time"
+            :value="option.value"
           >
-            {{ time }}
+            {{ option.label }}
           </option>
         </select>
-        <input 
-          type="time" 
-          v-model="customTime"
-          @change="handleCustomDateChange"
-        >
       </div>
 
       <div class="current-spot" v-if="currentSpot">
@@ -268,11 +327,63 @@ input[type="time"] {
   padding: 1rem;
   border: 2px solid #ff69b4;
   border-radius: 1rem;
-  font-size: 1rem;
-  outline: none;
   background-color: white;
   color: #ff69b4;
+  font-size: 1rem;
+  font-weight: 500;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff69b4'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1.2em;
   box-shadow: 0 2px 8px rgba(255, 105, 180, 0.2);
+  transition: all 0.3s;
+}
+
+/* 新增下拉框样式 */
+.time-select {
+  width: 100%;
+  padding: 1rem;
+  border: 2px solid #ff69b4;
+  border-radius: 1rem;
+  background-color: white;
+  color: #ff69b4;
+  font-size: 1rem;
+  font-weight: 500;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff69b4'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1.2em;
+  box-shadow: 0 2px 8px rgba(255, 105, 180, 0.2);
+  transition: all 0.3s;
+}
+
+.time-select:focus {
+  outline: none;
+  border-color: #ff1493;
+  box-shadow: 0 0 0 3px rgba(255, 20, 147, 0.1);
+}
+
+/* 移动旧的下拉样式到正确位置 */
+.date-input {
+  margin-bottom: 1.5rem;
+}
+
+/* 删除重复的.time-select:hover样式 */
+.time-select:hover {
+  border-color: #ff1493;
+  box-shadow: 0 4px 12px rgba(255, 105, 180, 0.3);
+}
+
+.time-select option {
+  padding: 0.8rem;
+  background: white;
+  color: #ff69b4;
+}
+
+.time-select option:hover {
+  background: #fff5f7 !important;
 }
 
 .current-spot, .all-spots {
